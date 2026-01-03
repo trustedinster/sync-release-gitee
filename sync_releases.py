@@ -319,12 +319,12 @@ def sync_github_releases_to_gitee():
     # 创建 Gitee 客户端实例
     gitee_client = Gitee(gitee_owner, gitee_token)
     
-    # 按照时间顺序同步（从最旧的开始），避免顺序颠倒问题
+    # 第一步：按照时间顺序（从旧到新）创建 Release
     github_releases_sorted = sorted(github_releases, key=lambda x: x.get('created_at', x.get('published_at', '')))
     
     # 使用 tqdm 显示同步进度
     with logging_redirect_tqdm():
-        for github_release in tqdm(github_releases_sorted, desc="同步 Releases", unit="release"):
+        for github_release in tqdm(github_releases_sorted, desc="创建 Releases", unit="release"):
             # 跳过没有 tag_name 的 Release
             if 'tag_name' not in github_release:
                 continue
@@ -337,12 +337,9 @@ def sync_github_releases_to_gitee():
             github_release_info, github_release_assets, github_release_url = fetch_github_release_details(
                 github_owner, github_repo, github_release_id)
                 
-            # 如果 Gitee 上已存在相同标签的 Release，则只同步附件
+            # 如果 Gitee 上已存在相同标签的 Release，则跳过创建
             if release_tag_name in gitee_releases:
-                tqdm.write(f'Release {release_tag_name} 已存在，仅同步附件')
-                sync_release_assets_only(
-                    gitee_client, github_release_assets, release_tag_name, 
-                    gitee_releases[release_tag_name], gitee_repo)
+                tqdm.write(f'Release {release_tag_name} 已存在，跳过创建')
                 continue
                 
             tqdm.write(f'成功获取 GitHub Release URL {github_release_url} , 标签为 {github_release_info["tag_name"]}')
@@ -365,12 +362,37 @@ def sync_github_releases_to_gitee():
                 release_body,
                 github_release['target_commitish'])
                 
-            # 如果创建成功，则同步附件
-            if gitee_release_id is not None:
-                new_release_info = {"assets": [], 'id': gitee_release_id}
-                sync_release_assets_only(
-                    gitee_client, github_release_assets, release_tag_name, 
-                    new_release_info, gitee_repo)
+    # 第二步：按照时间倒序（从新到旧）上传附件
+    github_releases_reverse_sorted = sorted(github_releases, key=lambda x: x.get('created_at', x.get('published_at', '')), reverse=True)
+    
+    with logging_redirect_tqdm():
+        for github_release in tqdm(github_releases_reverse_sorted, desc="上传附件", unit="release"):
+            # 跳过没有 tag_name 的 Release
+            if 'tag_name' not in github_release:
+                continue
+                
+            release_tag_name = github_release['tag_name']
+            github_release_id = github_release['id']
+            # 获取 GitHub Release 的详细信息和附件
+            github_release_info, github_release_assets, github_release_url = fetch_github_release_details(
+                github_owner, github_repo, github_release_id)
+                
+            # 获取 Gitee 上对应的 Release 信息
+            if release_tag_name not in gitee_releases:
+                # 如果是新创建的 Release，需要重新获取 Gitee Release 信息
+                updated_gitee_releases, _ = fetch_gitee_releases(gitee_owner, gitee_repo)
+                if release_tag_name in updated_gitee_releases:
+                    gitee_release_info = updated_gitee_releases[release_tag_name]
+                else:
+                    tqdm.write(f'警告: 未找到 Gitee 上的 Release {release_tag_name}')
+                    continue
+            else:
+                gitee_release_info = gitee_releases[release_tag_name]
+                
+            # 同步附件
+            sync_release_assets_only(
+                gitee_client, github_release_assets, release_tag_name, 
+                gitee_release_info, gitee_repo)
 
 
 def sync_release_assets_only(gitee_client, github_release_assets, release_tag_name, gitee_release_info, gitee_repo):
