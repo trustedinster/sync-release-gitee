@@ -319,9 +319,12 @@ def sync_github_releases_to_gitee():
     # 创建 Gitee 客户端实例
     gitee_client = Gitee(gitee_owner, gitee_token)
     
+    # 按照时间顺序同步（从最旧的开始），避免顺序颠倒问题
+    github_releases_sorted = sorted(github_releases, key=lambda x: x.get('created_at', x.get('published_at', '')))
+    
     # 使用 tqdm 显示同步进度
     with logging_redirect_tqdm():
-        for github_release in tqdm(github_releases, desc="同步 Releases", unit="release"):
+        for github_release in tqdm(github_releases_sorted, desc="同步 Releases", unit="release"):
             # 跳过没有 tag_name 的 Release
             if 'tag_name' not in github_release:
                 continue
