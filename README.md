@@ -10,7 +10,7 @@
 
 ```yaml
 - name: Sync GitHub Release to Gitee
-  uses: trustedinster/sync-release-gitee@v1.1
+  uses: trustedinster/sync-release-gitee@v1.2
   with:
     gitee_owner: your-gitee-username
     gitee_repo: your-gitee-repo
